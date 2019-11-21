@@ -47,8 +47,8 @@ let gameOptions = {
     // score increment for every successful hit
     scoreIncrement: 1,
 
-    // maximum score increment allowed
-    maxScoreIncrement: 10,
+    // maximum score multiplication allowed
+    maxScoreMultiplier: 10,
 
     // maximum ammo count
     maxAmmo: 6
@@ -72,6 +72,7 @@ window.onload = function() {
 class playGame extends Phaser.Scene{
     constructor(){
         super("PlayGame");
+        this.currentRound = 1;
         this.score = 0;
         this.multiplier = 1;
         this.ammoLeft = gameOptions.maxAmmo;
@@ -100,43 +101,10 @@ class playGame extends Phaser.Scene{
         // the rotating gun
         this.gun = this.add.sprite(game.config.width / 2, game.config.height / 2, "gun");
 
-        // the group of targets
-        this.targets = this.add.group();
-
-        // calculations for number of good and bad targets 
-        // weightedPick favours picking the earlier elements in the array
-        this.targetCount = Phaser.Math.RND.weightedPick(this.targetCountWeightArray);
-        this.badTargetIndices = this.getBadTargetIndices();
-
-        for(let i = 0; i < this.targetCount; i++){
-            // target aren't sprites but followers!!!!
-            let target = this.add.follower(this.path, offset.x + gameOptions.curveRadius, offset.y, "tile");
-            target.alpha = 0.8;
-            target.displayWidth = Phaser.Math.RND.between(gameOptions.targetSize.min, gameOptions.targetSize.max)
-
-            // marking the target as bad if it is in the badTargetIndices list
-            if (this.badTargetIndices.includes(i)) {
-                target.tint = 0xff0000;
-                target.setData('isBad', true);
-            }
-
-            this.targets.add(target);
-
-            // the core of the script: targets run along the path starting from a random position
-            let positionOffset = Phaser.Math.RND.realInRange(-0.05,0.05);
-            let position = i * (1.0 / this.targetCount) + positionOffset;
-            target.startFollow({
-                duration: gameOptions.targetSpeed.default,
-                repeat: -1,
-                rotateToPath: true,
-                verticalAdjust: true,
-                startAt: position
-            });
-        }
+        this.addTargetsToPath(offset);
 
         // place score on the upper right
         this.scoreText = this.add.text(game.config.width - 30, 30, '0', { fontSize: '72px', align: 'right' }).setOrigin(1, 0);
-
 
         // tween to rotate the gun
         this.gunTween = this.tweens.add({
@@ -151,7 +119,6 @@ class playGame extends Phaser.Scene{
                 this.gunTween.timeScale = Math.max(1, this.gunTween.timeScale * gameOptions.gunFriction);
             }
         });
-
 
 
         // waiting for user input
@@ -195,17 +162,19 @@ class playGame extends Phaser.Scene{
                         if(Phaser.Geom.Intersects.LineToRectangle(lineOfFire, bounds)){
 
                             // target HIT!!!! hide it for 3 seconds
-                            // TODO: if (target.data.values.type === BAD) { this.gameOver = true; return; }
                             target.visible = false;
                             hit = true;
 
-                            // if target is bad, remove all ammo and stop checking other targets
+                            // if target is bad, remove all ammo and don't change score and multiplier
                             if (target.getData('isBad')) {
                                 this.ammoLeft = 0;
                                 return;
+                            } else {
+                                this.goodTargetsLeft -= 1;
+                                console.log(this.goodTargetsLeft);
                             }
                             this.score += gameOptions.scoreIncrement * this.multiplier;
-                            this.multiplier = Math.min(this.multiplier + 1, gameOptions.maxScoreIncrement);
+                            this.multiplier = Math.min(this.multiplier + 1, gameOptions.maxScoreMultiplier);
                             this.scoreText.setText(this.score + ' ' + this.ammoLeft);
 
                             
@@ -219,6 +188,15 @@ class playGame extends Phaser.Scene{
                     this.multiplier = 1;
                     this.scoreText.setText(this.score + ' ' + this.ammoLeft);
                 }
+            }
+            if (this.goodTargetsLeft === 0) {    // the player has won the round
+                // remove all targets for the completed round
+                this.destroyTargetsFromPath();
+                // add new targets for the new round
+                this.addTargetsToPath(offset);
+                // reset the ammo count 
+                this.ammoLeft = gameOptions.maxAmmo;
+                this.currentRound += 1;
             }
             if (this.ammoLeft === 0 || this.gameOver) {
                 this.gameOver = true;
@@ -250,6 +228,55 @@ class playGame extends Phaser.Scene{
         this.path.draw(this.graphics);
     }
 
+    addTargetsToPath(offset) {
+        // the group of targets
+        this.targets = this.add.group();
+
+        // calculations for number of good and bad targets 
+        // weightedPick favours picking the earlier elements in the array
+        this.targetCount = Phaser.Math.RND.weightedPick(this.targetCountWeightArray);
+        // array of random indices for bad targets
+        this.badTargetIndices = this.getBadTargetIndices(this.targetCount);
+
+        // Number of good targets left
+        this.goodTargetsLeft = this.targetCount - this.badTargetIndices.length;
+        console.log("init ");
+        console.log(this.targetCount);
+        console.log(this.badTargetIndices);
+        console.log(this.goodTargetsLeft);
+
+        for(let i = 0; i < this.targetCount; i++){
+            // target aren't sprites but followers!!!!
+            let target = this.add.follower(this.path, offset.x + gameOptions.curveRadius, offset.y, "tile");
+            target.alpha = 0.8;
+            target.displayWidth = Phaser.Math.RND.between(gameOptions.targetSize.min, gameOptions.targetSize.max)
+
+            // marking the target as bad if it is in the badTargetIndices list
+            if (this.badTargetIndices.includes(i)) {
+                target.tint = 0xff0000;
+                target.setData('isBad', true);
+            }
+
+            this.targets.add(target);
+
+            // the core of the script: targets run along the path starting from a random position
+            let positionOffset = Phaser.Math.RND.realInRange(-0.05,0.05);
+            let position = i * (1.0 / this.targetCount) + positionOffset;
+            target.startFollow({
+                duration: gameOptions.targetSpeed.default,
+                repeat: -1,
+                rotateToPath: true,
+                verticalAdjust: true,
+                startAt: position
+            });
+        }
+    }
+
+    destroyTargetsFromPath() {
+        // removing all the targets created for the round along with its children
+        this.targets.destroy(true);
+    }
+
     getTargetCountWeightArray() {
         // initialising targetCountWeightArray
         // elements in the front are more likely to be picked
@@ -264,11 +291,12 @@ class playGame extends Phaser.Scene{
         return arr;
     }
 
-    getBadTargetIndices() {
-        let badTargetCountWeightArray = this.targetCount > 4 ? [1, 2] : [0, 1];
+    getBadTargetIndices(targetCount) {
+        let badTargetCountWeightArray = targetCount > 4 ? [1, 2] : [0, 1];
         let badTargetCount = Phaser.Math.RND.weightedPick(badTargetCountWeightArray);
         let badTargetIndices = [];
-        let badTargetChoices = Phaser.Utils.Array.NumberArray(0,this.targetCount);    // e.g. [0,1,2,3] if targetCount = 4
+        let badTargetChoices = Phaser.Utils.Array.NumberArray(0,targetCount-1);    // e.g. [0,1,2,3] if targetCount = 4
+        console.log(badTargetChoices);
         for (let i = 0; i < badTargetCount; i++) {
             let badTargetChoice = Phaser.Math.RND.pick(badTargetChoices);
             badTargetIndices.push(badTargetChoice);
