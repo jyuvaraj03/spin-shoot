@@ -61,15 +61,15 @@ window.onload = function() {
             mode: Phaser.Scale.FIT,
             autoCenter: Phaser.Scale.CENTER_BOTH,
             parent: "thegame",
-            width: 750,
-            height: 1334
+            width: window.innerWidth,
+            height: window.innerHeight
         },
-        scene: playGame
+        scene: PlayGame
     }
     game = new Phaser.Game(gameConfig);
     window.focus();
 }
-class playGame extends Phaser.Scene{
+class PlayGame extends Phaser.Scene{
     constructor(){
         super("PlayGame");
         this.currentRound = 1;
@@ -86,9 +86,26 @@ class playGame extends Phaser.Scene{
         this.load.image("fireline", "fireline.png");
     }
     create(){
+        // calculating the growRatio for better responsiveness
+        // on smaller screens the path and the gun size is resized according to the growRatio
+        let growRatio;
+        if (game.config.width < game.config.height) {
+           gameOptions.pathWidth = game.config.width - 200;
+           gameOptions.pathHeight = gameOptions.pathWidth * 8/5;
+           growRatio = gameOptions.pathWidth / 500;
+           gameOptions.targetSize.min *= growRatio;
+           gameOptions.targetSize.max *= growRatio;
+           console.log(gameOptions.targetSize.max);
+        } else {
+            gameOptions.pathHeight = game.config.height - 200;
+            gameOptions.pathWidth = gameOptions.pathHeight * 5/8;
+            growRatio = gameOptions.pathHeight / 800;
+            gameOptions.targetSize.min *= growRatio;
+            gameOptions.targetSize.max *= growRatio;
+        }
+
         // determine the offset to make path always stand in the center of the stage
         let offset = new Phaser.Math.Vector2((game.config.width - gameOptions.pathWidth) / 2, (game.config.height - gameOptions.pathHeight) / 2);
-
         this.createNewPath(offset);
 
         // fireLine is the bullet trajectory
@@ -100,6 +117,8 @@ class playGame extends Phaser.Scene{
 
         // the rotating gun
         this.gun = this.add.sprite(game.config.width / 2, game.config.height / 2, "gun");
+        this.gun.scaleX = growRatio || 1;
+        this.gun.scaleY = growRatio || 1;
 
         this.addTargetsToPath(offset);
 
